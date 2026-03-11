@@ -1,0 +1,13 @@
+# Core
+soundcard
+soundfile
+numpy<2.0.0
+
+# NotebookLM API
+notebooklm-py[browser]
+
+# Auth (login via Chrome CDP)
+playwright
+
+# Build
+pyinstaller
