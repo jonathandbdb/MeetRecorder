@@ -34,8 +34,8 @@ from .config import (
 from .ffmpeg_utils import check_ffmpeg, get_ffmpeg_status
 from .notebooklm_client import (
     listar_notebooks_con_fuentes,
-    load_extraction_prompt,
-    save_extraction_prompt,
+    load_prompt_config,
+    save_prompt_config,
 )
 from .state import load_state, save_state
 
@@ -560,13 +560,16 @@ class App(tk.Tk):
 
     # ------------------------------------------------ Extraction Prompt
     def _update_prompt_indicator(self):
-        prompt = load_extraction_prompt()
-        if prompt:
-            self.prompt_btn.configure(text="📝  Información a extraer ✓")
+        config = load_prompt_config()
+        if config["prompt"]:
+            fmt_label = "JSON" if config["format"] == "json" else "texto"
+            self.prompt_btn.configure(text=f"📝  Información a extraer ✓ ({fmt_label})")
         else:
             self.prompt_btn.configure(text="📝  Información a extraer")
 
     def _open_prompt_dialog(self):
+        config = load_prompt_config()
+
         dialog = tk.Toplevel(self)
         dialog.title("Información a extraer")
         dialog.configure(bg=BG_DARKER)
@@ -598,19 +601,60 @@ class App(tk.Tk):
         )
         text_box.pack(fill="both")
 
-        current = load_extraction_prompt() or ""
+        current = config["prompt"] or ""
         if current:
             text_box.insert("1.0", current)
-        else:
-            text_box.insert("1.0", "")
         text_box.focus_set()
+
+        # Format selector
+        fmt_frame = tk.Frame(dialog, bg=BG_DARKER)
+        fmt_frame.pack(padx=20, pady=(10, 0), fill="x")
+
+        tk.Label(
+            fmt_frame, text="Formato de respuesta:",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+        ).pack(side="left")
+
+        fmt_var = tk.StringVar(value=config["format"])
+
+        tk.Radiobutton(
+            fmt_frame, text="Texto plano", variable=fmt_var, value="text",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=TEXT_COLOR,
+            selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+            activeforeground=TEXT_COLOR,
+        ).pack(side="left", padx=(10, 4))
+
+        tk.Radiobutton(
+            fmt_frame, text="JSON", variable=fmt_var, value="json",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=TEXT_COLOR,
+            selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+            activeforeground=TEXT_COLOR,
+        ).pack(side="left", padx=4)
+
+        # JSON format preview
+        json_preview = tk.Label(
+            dialog,
+            text='{ "response": "...", "metadata": { "key": "value" } }',
+            font=("Consolas", 8), bg=BG_DARKER, fg=MUTED_COLOR,
+        )
+
+        def _toggle_preview(*_):
+            if fmt_var.get() == "json":
+                json_preview.pack(padx=20, pady=(2, 0), anchor="w")
+            else:
+                json_preview.pack_forget()
+
+        fmt_var.trace_add("write", _toggle_preview)
+        _toggle_preview()
 
         def _save():
             content = text_box.get("1.0", "end").strip()
-            save_extraction_prompt(content)
+            fmt = fmt_var.get()
+            save_prompt_config(content, fmt)
             self._update_prompt_indicator()
             if content:
-                self._log("Prompt de extracción guardado.", ACCENT_GREEN)
+                label = "JSON" if fmt == "json" else "texto plano"
+                self._log(f"Prompt de extracción guardado (formato: {label}).", ACCENT_GREEN)
             else:
                 self._log("Prompt de extracción desactivado.", MUTED_COLOR)
             dialog.destroy()

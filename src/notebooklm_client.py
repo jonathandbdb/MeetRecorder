@@ -79,15 +79,16 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
         log_fn("Audio subido a NotebookLM!", ACCENT_GREEN)
 
         # Si hay un prompt de extracción, esperar a que la fuente esté lista y preguntar
-        prompt = load_extraction_prompt()
-        if prompt:
+        config = load_prompt_config()
+        if config["prompt"]:
             if progress_callback:
                 progress_callback(80)
             log_fn("Esperando procesamiento de la fuente...", ACCENT_YELLOW)
             try:
                 await client.sources.wait_until_ready(nb_id, source.id, timeout=180)
                 log_fn("Consultando información importante...", ACCENT_YELLOW)
-                result = await client.chat.ask(nb_id, prompt, source_ids=[source.id])
+                final_prompt = _build_final_prompt(config["prompt"], config["format"])
+                result = await client.chat.ask(nb_id, final_prompt, source_ids=[source.id])
                 if result and result.answer:
                     log_fn("─── Información extraída ───", ACCENT_LAVENDER)
                     for line in result.answer.strip().split("\n"):
@@ -104,17 +105,55 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
             progress_callback(100)
 
 
-def load_extraction_prompt() -> str | None:
-    """Load the user's extraction prompt from disk, or None if empty/missing."""
+JSON_FORMAT_INSTRUCTION = (
+    "\n\nIMPORTANT: Respond ONLY with valid JSON using this exact structure, "
+    "no additional text before or after:\n"
+    '{\n'
+    '  "response": "Your full answer as plain text here",\n'
+    '  "metadata": {\n'
+    '    "key1": "value1",\n'
+    '    "key2": "value2"\n'
+    '  }\n'
+    '}\n'
+    'Use "metadata" to include structured key-value pairs extracted from the content '
+    '(e.g. task names, ticket IDs, people, dates, etc.).'
+)
+
+
+def _build_final_prompt(prompt: str, fmt: str) -> str:
+    """Build the final prompt with format instructions if needed."""
+    if fmt == "json":
+        return prompt + JSON_FORMAT_INSTRUCTION
+    return prompt
+
+
+def load_prompt_config() -> dict:
+    """Load prompt config: {"prompt": str|None, "format": "text"|"json"}."""
     if PROMPT_FILE.exists():
-        content = PROMPT_FILE.read_text(encoding="utf-8").strip()
-        return content if content else None
-    return None
+        try:
+            import json
+            data = json.loads(PROMPT_FILE.read_text(encoding="utf-8"))
+            return {
+                "prompt": data.get("prompt", "").strip() or None,
+                "format": data.get("format", "text"),
+            }
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: old plain text format
+            content = PROMPT_FILE.read_text(encoding="utf-8").strip()
+            return {"prompt": content or None, "format": "text"}
+    return {"prompt": None, "format": "text"}
 
 
-def save_extraction_prompt(text: str):
-    """Save the extraction prompt to disk."""
-    PROMPT_FILE.write_text(text.strip(), encoding="utf-8")
+def load_extraction_prompt() -> str | None:
+    """Load just the prompt text (convenience wrapper)."""
+    return load_prompt_config()["prompt"]
+
+
+def save_prompt_config(prompt: str, fmt: str = "text"):
+    """Save prompt config as JSON."""
+    import json
+    data = {"prompt": prompt.strip(), "format": fmt}
+    PROMPT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def subir_audio(file_path: str, log_fn, progress_callback=None):
