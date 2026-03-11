@@ -52,7 +52,8 @@ class App(tk.Tk):
         super().__init__()
         self.title("MeetRec — Grabador de Reuniones")
         self.configure(bg=BG_DARKER)
-        self.resizable(False, False)
+        self.minsize(480, 600)
+        self._is_fullscreen = False
         self._recording_seconds = 0
         self._timer_id = None
         self._processing = False
@@ -61,6 +62,7 @@ class App(tk.Tk):
         self.bind("<Control-r>", lambda e: self._toggle_recording())
         self.bind("<Control-R>", lambda e: self._toggle_recording())
         self.bind("<Escape>", lambda e: self._escape_pressed())
+        self.bind("<F11>", lambda e: self._toggle_fullscreen())
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         check_ffmpeg()
@@ -71,8 +73,14 @@ class App(tk.Tk):
             daemon=True,
         ).start()
 
+    def _toggle_fullscreen(self):
+        self._is_fullscreen = not self._is_fullscreen
+        self.attributes("-fullscreen", self._is_fullscreen)
+
     def _escape_pressed(self):
-        if _audio_mod.is_recording:
+        if self._is_fullscreen:
+            self._toggle_fullscreen()
+        elif _audio_mod.is_recording:
             self._toggle_recording()
 
     def _on_close(self):
@@ -195,7 +203,7 @@ class App(tk.Tk):
         self._update_prompt_indicator()
 
         tk.Label(
-            bottom_row, text="Ctrl+R: Grabar  |  Esc: Detener",
+            bottom_row, text="Ctrl+R: Grabar  |  Esc: Detener  |  F11: Pantalla completa",
             font=("Segoe UI", 7), bg=CARD_BG, fg=MUTED_COLOR,
         ).pack(side="right", padx=(0, 4))
 
@@ -281,7 +289,7 @@ class App(tk.Tk):
 
         # LOG
         log_outer, log_card = _make_card(self, padx=0, pady=0)
-        log_outer.pack(fill="x", padx=PADX, pady=(8, 14))
+        log_outer.pack(fill="both", expand=True, padx=PADX, pady=(8, 14))
         self.log_frame = log_outer
 
         self.log_box = scrolledtext.ScrolledText(
@@ -291,7 +299,7 @@ class App(tk.Tk):
             insertbackground=TEXT_COLOR, selectbackground=SURFACE_LIGHT,
             padx=10, pady=8,
         )
-        self.log_box.pack(fill="both")
+        self.log_box.pack(fill="both", expand=True)
 
         for tag, color in [
             ("yellow", ACCENT_YELLOW), ("green", ACCENT_GREEN),
