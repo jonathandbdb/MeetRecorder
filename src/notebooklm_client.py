@@ -104,10 +104,9 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
                     if flow_response:
                         log_fn("Flow: Agregando respuesta como fuente en NotebookLM...", ACCENT_YELLOW)
                         try:
-                            flow_source = await client.sources.add_text(nb_id, flow_response)
                             fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
                             flow_titulo = f"Respuesta Flow {fecha}"
-                            await client.sources.rename(nb_id, flow_source.id, flow_titulo)
+                            flow_source = await client.sources.add_text(nb_id, flow_titulo, flow_response)
                             log_fn(f"Flow: Fuente agregada: '{flow_titulo}'", ACCENT_GREEN)
                         except Exception as fe:
                             log_fn(f"Flow: Error al agregar fuente — {fe}", ACCENT_RED)
