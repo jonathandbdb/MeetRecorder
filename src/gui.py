@@ -32,7 +32,11 @@ from .config import (
     TEXT_COLOR,
 )
 from .ffmpeg_utils import check_ffmpeg, get_ffmpeg_status
-from .notebooklm_client import listar_notebooks_con_fuentes
+from .notebooklm_client import (
+    listar_notebooks_con_fuentes,
+    load_extraction_prompt,
+    save_extraction_prompt,
+)
 from .state import load_state, save_state
 
 
@@ -175,12 +179,25 @@ class App(tk.Tk):
             command=self._start_login,
         )
 
-        shortcuts_frame = tk.Frame(rec_card, bg=CARD_BG)
-        shortcuts_frame.pack(fill="x", pady=8)
+        # Prompt button + shortcuts row
+        bottom_row = tk.Frame(rec_card, bg=CARD_BG)
+        bottom_row.pack(fill="x", pady=8)
+
+        self.prompt_btn = tk.Button(
+            bottom_row, text="📝  Información a extraer",
+            font=("Segoe UI", 9),
+            bg=BTN_IDLE_BG, fg=TEXT_COLOR, relief="flat",
+            cursor="hand2", padx=10, pady=4,
+            command=self._open_prompt_dialog,
+        )
+        self.prompt_btn.pack(side="left")
+        self._bind_hover(self.prompt_btn, BTN_HOVER_BG, BTN_IDLE_BG)
+        self._update_prompt_indicator()
+
         tk.Label(
-            shortcuts_frame, text="Ctrl+R: Grabar  |  Esc: Detener",
+            bottom_row, text="Ctrl+R: Grabar  |  Esc: Detener",
             font=("Segoe UI", 7), bg=CARD_BG, fg=MUTED_COLOR,
-        ).pack()
+        ).pack(side="right", padx=(0, 4))
 
         # NOTEBOOKS CARD
         self.nb_card_outer, self.nb_card = _make_card(self, padx=16, pady=12)
@@ -540,6 +557,76 @@ class App(tk.Tk):
             self._refresh_notebooks()
         except Exception as e:
             self._log(f"Error: {e}", ACCENT_RED)
+
+    # ------------------------------------------------ Extraction Prompt
+    def _update_prompt_indicator(self):
+        prompt = load_extraction_prompt()
+        if prompt:
+            self.prompt_btn.configure(text="📝  Información a extraer ✓")
+        else:
+            self.prompt_btn.configure(text="📝  Información a extraer")
+
+    def _open_prompt_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Información a extraer")
+        dialog.configure(bg=BG_DARKER)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        tk.Label(
+            dialog,
+            text="¿Qué información querés extraer de las reuniones?",
+            font=("Segoe UI", 10, "bold"), bg=BG_DARKER, fg=TEXT_COLOR,
+        ).pack(padx=20, pady=(20, 4))
+
+        tk.Label(
+            dialog,
+            text="Después de subir el audio, se le consultará a NotebookLM\n"
+                 "usando este texto. Dejalo vacío para desactivar.",
+            font=("Segoe UI", 8), bg=BG_DARKER, fg=MUTED_COLOR,
+        ).pack(padx=20, pady=(0, 8))
+
+        text_frame = tk.Frame(dialog, bg=SURFACE_COLOR, padx=2, pady=2)
+        text_frame.pack(padx=20, fill="x")
+
+        text_box = tk.Text(
+            text_frame, width=50, height=8,
+            font=("Segoe UI", 10), bg=SURFACE_COLOR, fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR, relief="flat",
+            wrap="word", padx=8, pady=8,
+        )
+        text_box.pack(fill="both")
+
+        current = load_extraction_prompt() or ""
+        if current:
+            text_box.insert("1.0", current)
+        else:
+            text_box.insert("1.0", "")
+        text_box.focus_set()
+
+        def _save():
+            content = text_box.get("1.0", "end").strip()
+            save_extraction_prompt(content)
+            self._update_prompt_indicator()
+            if content:
+                self._log("Prompt de extracción guardado.", ACCENT_GREEN)
+            else:
+                self._log("Prompt de extracción desactivado.", MUTED_COLOR)
+            dialog.destroy()
+
+        bf = tk.Frame(dialog, bg=BG_DARKER)
+        bf.pack(pady=(12, 20))
+        tk.Button(
+            bf, text="Guardar", font=("Segoe UI", 10),
+            bg=ACCENT_GREEN, fg="#1e1e2e", relief="flat",
+            cursor="hand2", padx=20, pady=4, command=_save,
+        ).pack(side="left", padx=4)
+        tk.Button(
+            bf, text="Cancelar", font=("Segoe UI", 10),
+            bg=BTN_IDLE_BG, fg=TEXT_COLOR, relief="flat",
+            cursor="hand2", padx=20, pady=4, command=dialog.destroy,
+        ).pack(side="left", padx=4)
 
     # --------------------------------------------------------- Recording
     def _toggle_recording(self):

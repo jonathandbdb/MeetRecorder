@@ -22,6 +22,7 @@ MAX_SOURCES     = 50
 NOTEBOOK_PREFIX = "Reuniones"
 STATE_FILE      = DATA_DIR / "notebooklm_state.json"
 STORAGE_PATH    = DATA_DIR / "storage_state.json"
+PROMPT_FILE     = DATA_DIR / "extraction_prompt.txt"
 DEBUG_PORT      = 9234
 
 # --- Color palette (Catppuccin Mocha) ---

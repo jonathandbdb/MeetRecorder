@@ -9,10 +9,12 @@ from pathlib import Path
 from .config import (
     ACCENT_BLUE,
     ACCENT_GREEN,
+    ACCENT_LAVENDER,
     ACCENT_YELLOW,
     MAX_SOURCES,
     MUTED_COLOR,
     NOTEBOOK_PREFIX,
+    PROMPT_FILE,
     STORAGE_PATH,
 )
 from .state import load_state, save_state
@@ -66,7 +68,7 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
         source = await client.sources.add_file(nb_id, Path(file_path))
 
         if progress_callback:
-            progress_callback(80)
+            progress_callback(70)
 
         log_fn(f"Fuente agregada: {source.title}", ACCENT_GREEN)
 
@@ -75,10 +77,44 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
         await client.sources.rename(nb_id, source.id, nuevo_titulo)
         log_fn(f"Renombrada a: '{nuevo_titulo}'", MUTED_COLOR)
         log_fn("Audio subido a NotebookLM!", ACCENT_GREEN)
-        log_fn("Abrí NotebookLM para ver la transcripción.", ACCENT_BLUE)
+
+        # Si hay un prompt de extracción, esperar a que la fuente esté lista y preguntar
+        prompt = load_extraction_prompt()
+        if prompt:
+            if progress_callback:
+                progress_callback(80)
+            log_fn("Esperando procesamiento de la fuente...", ACCENT_YELLOW)
+            try:
+                await client.sources.wait_until_ready(nb_id, source.id, timeout=180)
+                log_fn("Consultando información importante...", ACCENT_YELLOW)
+                result = await client.chat.ask(nb_id, prompt, source_ids=[source.id])
+                if result and result.answer:
+                    log_fn("─── Información extraída ───", ACCENT_LAVENDER)
+                    for line in result.answer.strip().split("\n"):
+                        log_fn(f"  {line}", ACCENT_LAVENDER)
+                    log_fn("────────────────────────────", ACCENT_LAVENDER)
+                else:
+                    log_fn("No se pudo extraer información.", ACCENT_YELLOW)
+            except Exception as e:
+                log_fn(f"Error al consultar: {e}", ACCENT_YELLOW)
+        else:
+            log_fn("Abrí NotebookLM para ver la transcripción.", ACCENT_BLUE)
 
         if progress_callback:
             progress_callback(100)
+
+
+def load_extraction_prompt() -> str | None:
+    """Load the user's extraction prompt from disk, or None if empty/missing."""
+    if PROMPT_FILE.exists():
+        content = PROMPT_FILE.read_text(encoding="utf-8").strip()
+        return content if content else None
+    return None
+
+
+def save_extraction_prompt(text: str):
+    """Save the extraction prompt to disk."""
+    PROMPT_FILE.write_text(text.strip(), encoding="utf-8")
 
 
 def subir_audio(file_path: str, log_fn, progress_callback=None):
