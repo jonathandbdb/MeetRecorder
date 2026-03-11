@@ -31,7 +31,7 @@ hiddenimports = (
 
 a = Analysis(
     ["src/app.py"],
-    pathex=[],
+    pathex=["."],
     binaries=[],
     datas=[],
     hiddenimports=hiddenimports,

@@ -3,6 +3,10 @@
 Standalone desktop application that records meetings (microphone + speaker),
 compresses audio to MP3, and automatically uploads to Google NotebookLM.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="MeetRec Screenshot" width="500"/>
+</p>
+
 ## Features
 
 - **Dual audio capture**: Records microphone and speaker output simultaneously
@@ -66,12 +70,22 @@ Output: `dist\MeetRec\MeetRec.exe`
 ```
 MeetRecorder/
 ├── src/
-│   └── app.py              # Main application
-├── assets/                  # Icons and static resources
+│   ├── __init__.py          # Package marker
+│   ├── app.py               # Entry point
+│   ├── config.py            # Constants, paths, color palette
+│   ├── state.py             # Persistent state management
+│   ├── ffmpeg_utils.py      # FFmpeg detection and MP3 conversion
+│   ├── audio.py             # Audio recording and post-processing
+│   ├── notebooklm_client.py # NotebookLM API integration
+│   ├── auth.py              # Google authentication (Chrome CDP)
+│   └── gui.py               # tkinter GUI (App class)
+├── assets/
+│   └── screenshot.png       # App screenshot
 ├── meetrec.spec             # PyInstaller configuration
 ├── build_linux.sh           # Linux build script (Ubuntu/Debian)
 ├── build_windows.bat        # Windows build script
-├── requirements.txt         # Python dependencies
+├── requirements.txt         # Python dependencies (pinned)
+├── LICENSE                  # MIT License
 └── README.md
 ```
 
@@ -96,4 +110,4 @@ All user data is stored in `~/.meetrec/`:
 
 ## License
 
-Proprietary — All rights reserved.
+MIT License — see [LICENSE](LICENSE) for details.
