@@ -55,7 +55,7 @@ def save_flow_config(config: dict):
     )
 
 
-def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = None):
+def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = None) -> str | None:
     """
     Ejecuta el flujo post-extracción.
 
@@ -64,6 +64,10 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
         fmt: Formato de la respuesta ("text" o "json").
         log_fn: Función para loguear en la GUI.
         nb_id: ID del notebook actual (para agregar fuentes).
+
+    Returns:
+        Texto de la respuesta del endpoint si add_to_notebooklm está activo,
+        None en caso contrario.
     """
     from .config import (
         ACCENT_BLUE,
@@ -75,12 +79,12 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
 
     config = load_flow_config()
     if not config["enabled"]:
-        return
+        return None
 
     url = config["endpoint"].get("url", "").strip()
     if not url:
         log_fn("Flow: No hay URL configurada, omitiendo.", ACCENT_YELLOW)
-        return
+        return None
 
     method = config["endpoint"].get("method", "POST").upper()
     headers = dict(config["endpoint"].get("headers", {}))
@@ -112,13 +116,13 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
 
         if not config["expect_response"]:
             log_fn("Flow: Completado (sin esperar respuesta).", ACCENT_GREEN)
-            return
+            return None
 
         # Procesar la respuesta
         resp_text = resp.text.strip()
         if not resp_text:
             log_fn("Flow: Respuesta vacía, nada que procesar.", ACCENT_YELLOW)
-            return
+            return None
 
         log_fn("─── Respuesta del endpoint ───", ACCENT_LAVENDER)
         for line in resp_text[:500].split("\n"):
@@ -127,9 +131,12 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
             log_fn("  ... (truncado)", ACCENT_LAVENDER)
         log_fn("──────────────────────────────", ACCENT_LAVENDER)
 
-        # Agregar respuesta como fuente a NotebookLM
+        # Retornar texto para que el caller lo agregue como fuente si corresponde
         if config["on_response"].get("add_to_notebooklm") and nb_id:
-            _add_response_as_source(resp_text, nb_id, log_fn)
+            return resp_text
+
+        log_fn("Flow: Completado.", ACCENT_GREEN)
+        return None
 
     except requests.exceptions.Timeout:
         log_fn(f"Flow: Timeout después de {timeout}s.", ACCENT_RED)
@@ -137,32 +144,5 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
         log_fn(f"Flow: No se pudo conectar a {url}.", ACCENT_RED)
     except Exception as e:
         log_fn(f"Flow: Error — {e}", ACCENT_RED)
-
-
-def _add_response_as_source(response_text: str, nb_id: str, log_fn):
-    """Agrega la respuesta del endpoint como fuente de texto en NotebookLM."""
-    import asyncio
-    import datetime
-
-    from .config import ACCENT_GREEN, ACCENT_RED, ACCENT_YELLOW, STORAGE_PATH
-
-    log_fn("Flow: Agregando respuesta como fuente en NotebookLM...", ACCENT_YELLOW)
-
-    async def _add():
-        from notebooklm import NotebookLMClient
-
-        async with await NotebookLMClient.from_storage(
-            path=str(STORAGE_PATH),
-        ) as client:
-            source = await client.sources.add_text(nb_id, response_text)
-            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-            titulo = f"Respuesta Flow {fecha}"
-            await client.sources.rename(nb_id, source.id, titulo)
-            return titulo
-
-    try:
-        titulo = asyncio.run(_add())
-        log_fn(f"Flow: Fuente agregada: '{titulo}'", ACCENT_GREEN)
-    except Exception as e:
-        log_fn(f"Flow: Error al agregar fuente — {e}", ACCENT_RED)
+    return None
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:

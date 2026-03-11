@@ -10,6 +10,7 @@ from .config import (
     ACCENT_BLUE,
     ACCENT_GREEN,
     ACCENT_LAVENDER,
+    ACCENT_RED,
     ACCENT_YELLOW,
     MAX_SOURCES,
     MUTED_COLOR,
@@ -97,7 +98,19 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
 
                     # Ejecutar flow post-extracción
                     from .flow import execute_flow
-                    execute_flow(result.answer.strip(), config["format"], log_fn, nb_id)
+                    flow_response = execute_flow(result.answer.strip(), config["format"], log_fn, nb_id)
+
+                    # Si el flow devolvió texto, agregarlo como fuente en NotebookLM
+                    if flow_response:
+                        log_fn("Flow: Agregando respuesta como fuente en NotebookLM...", ACCENT_YELLOW)
+                        try:
+                            flow_source = await client.sources.add_text(nb_id, flow_response)
+                            fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+                            flow_titulo = f"Respuesta Flow {fecha}"
+                            await client.sources.rename(nb_id, flow_source.id, flow_titulo)
+                            log_fn(f"Flow: Fuente agregada: '{flow_titulo}'", ACCENT_GREEN)
+                        except Exception as fe:
+                            log_fn(f"Flow: Error al agregar fuente — {fe}", ACCENT_RED)
                 else:
                     log_fn("No se pudo extraer información.", ACCENT_YELLOW)
             except Exception as e:
