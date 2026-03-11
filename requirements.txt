@@ -6,6 +6,9 @@ numpy==1.26.4
 # NotebookLM API
 notebooklm-py[browser]==0.3.3
 
+# HTTP (flow pipeline)
+requests==2.32.3
+
 # Auth (login via Chrome CDP)
 playwright==1.58.0
 

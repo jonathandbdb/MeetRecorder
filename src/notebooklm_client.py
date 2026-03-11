@@ -94,6 +94,10 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
                     for line in result.answer.strip().split("\n"):
                         log_fn(f"  {line}", ACCENT_LAVENDER)
                     log_fn("────────────────────────────", ACCENT_LAVENDER)
+
+                    # Ejecutar flow post-extracción
+                    from .flow import execute_flow
+                    execute_flow(result.answer.strip(), config["format"], log_fn, nb_id)
                 else:
                     log_fn("No se pudo extraer información.", ACCENT_YELLOW)
             except Exception as e:

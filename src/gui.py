@@ -32,6 +32,7 @@ from .config import (
     TEXT_COLOR,
 )
 from .ffmpeg_utils import check_ffmpeg, get_ffmpeg_status
+from .flow import load_flow_config, save_flow_config
 from .notebooklm_client import (
     listar_notebooks_con_fuentes,
     load_prompt_config,
@@ -201,6 +202,17 @@ class App(tk.Tk):
         self.prompt_btn.pack(side="left")
         self._bind_hover(self.prompt_btn, BTN_HOVER_BG, BTN_IDLE_BG)
         self._update_prompt_indicator()
+
+        self.flow_btn = tk.Button(
+            bottom_row, text="⚡  Flow",
+            font=("Segoe UI", 9),
+            bg=BTN_IDLE_BG, fg=TEXT_COLOR, relief="flat",
+            cursor="hand2", padx=10, pady=4,
+            command=self._open_flow_dialog,
+        )
+        self.flow_btn.pack(side="left", padx=(6, 0))
+        self._bind_hover(self.flow_btn, BTN_HOVER_BG, BTN_IDLE_BG)
+        self._update_flow_indicator()
 
         tk.Label(
             bottom_row, text="Ctrl+R: Grabar  |  Esc: Detener  |  F11: Pantalla completa",
@@ -669,6 +681,210 @@ class App(tk.Tk):
 
         bf = tk.Frame(dialog, bg=BG_DARKER)
         bf.pack(pady=(12, 20))
+        tk.Button(
+            bf, text="Guardar", font=("Segoe UI", 10),
+            bg=ACCENT_GREEN, fg="#1e1e2e", relief="flat",
+            cursor="hand2", padx=20, pady=4, command=_save,
+        ).pack(side="left", padx=4)
+        tk.Button(
+            bf, text="Cancelar", font=("Segoe UI", 10),
+            bg=BTN_IDLE_BG, fg=TEXT_COLOR, relief="flat",
+            cursor="hand2", padx=20, pady=4, command=dialog.destroy,
+        ).pack(side="left", padx=4)
+
+    # ------------------------------------------------------------ Flow
+    def _update_flow_indicator(self):
+        config = load_flow_config()
+        if config["enabled"] and config["endpoint"].get("url", "").strip():
+            self.flow_btn.configure(text="⚡  Flow ✓")
+        else:
+            self.flow_btn.configure(text="⚡  Flow")
+
+    def _open_flow_dialog(self):
+        config = load_flow_config()
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Configurar Flow")
+        dialog.configure(bg=BG_DARKER)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        tk.Label(
+            dialog,
+            text="Pipeline post-extracción",
+            font=("Segoe UI", 10, "bold"), bg=BG_DARKER, fg=TEXT_COLOR,
+        ).pack(padx=20, pady=(20, 4))
+
+        tk.Label(
+            dialog,
+            text="Envía la respuesta de extracción a un endpoint HTTP.\n"
+                 "Opcionalmente procesa la respuesta.",
+            font=("Segoe UI", 8), bg=BG_DARKER, fg=MUTED_COLOR,
+        ).pack(padx=20, pady=(0, 10))
+
+        # Habilitado
+        enabled_var = tk.BooleanVar(value=config["enabled"])
+        enabled_frame = tk.Frame(dialog, bg=BG_DARKER)
+        enabled_frame.pack(fill="x", padx=20)
+        tk.Checkbutton(
+            enabled_frame, text="Activar flow", variable=enabled_var,
+            font=("Segoe UI", 9, "bold"), bg=BG_DARKER, fg=TEXT_COLOR,
+            selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+            activeforeground=TEXT_COLOR,
+        ).pack(side="left")
+
+        # URL
+        tk.Label(
+            dialog, text="URL del endpoint:", anchor="w",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+        ).pack(fill="x", padx=20, pady=(10, 2))
+
+        url_entry = tk.Entry(
+            dialog, font=("Consolas", 9), bg=SURFACE_COLOR, fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR, relief="flat",
+        )
+        url_entry.pack(fill="x", padx=20, ipady=4)
+        url_entry.insert(0, config["endpoint"].get("url", ""))
+
+        # Método
+        method_frame = tk.Frame(dialog, bg=BG_DARKER)
+        method_frame.pack(fill="x", padx=20, pady=(8, 0))
+
+        tk.Label(
+            method_frame, text="Método:", anchor="w",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+        ).pack(side="left")
+
+        method_var = tk.StringVar(value=config["endpoint"].get("method", "POST"))
+        for m in ("POST", "PUT", "PATCH"):
+            tk.Radiobutton(
+                method_frame, text=m, variable=method_var, value=m,
+                font=("Segoe UI", 9), bg=BG_DARKER, fg=TEXT_COLOR,
+                selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+                activeforeground=TEXT_COLOR,
+            ).pack(side="left", padx=(8, 0))
+
+        # Headers (JSON)
+        tk.Label(
+            dialog, text="Headers (JSON):", anchor="w",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+        ).pack(fill="x", padx=20, pady=(10, 2))
+
+        headers_frame = tk.Frame(dialog, bg=SURFACE_COLOR, padx=2, pady=2)
+        headers_frame.pack(fill="x", padx=20)
+
+        headers_box = tk.Text(
+            headers_frame, width=50, height=3,
+            font=("Consolas", 9), bg=SURFACE_COLOR, fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR, relief="flat", wrap="word",
+            padx=6, pady=4,
+        )
+        headers_box.pack(fill="both")
+
+        import json as _json
+        raw_headers = config["endpoint"].get("headers", {})
+        if raw_headers:
+            headers_box.insert("1.0", _json.dumps(raw_headers, indent=2, ensure_ascii=False))
+        else:
+            headers_box.insert("1.0", "{}")
+
+        # Timeout
+        timeout_frame = tk.Frame(dialog, bg=BG_DARKER)
+        timeout_frame.pack(fill="x", padx=20, pady=(8, 0))
+
+        tk.Label(
+            timeout_frame, text="Timeout (seg):",
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+        ).pack(side="left")
+
+        timeout_entry = tk.Entry(
+            timeout_frame, width=6, font=("Consolas", 9),
+            bg=SURFACE_COLOR, fg=TEXT_COLOR, insertbackground=TEXT_COLOR,
+            relief="flat",
+        )
+        timeout_entry.pack(side="left", padx=(8, 0), ipady=2)
+        timeout_entry.insert(0, str(config["endpoint"].get("timeout", 30)))
+
+        # Esperar respuesta
+        expect_var = tk.BooleanVar(value=config["expect_response"])
+        expect_frame = tk.Frame(dialog, bg=BG_DARKER)
+        expect_frame.pack(fill="x", padx=20, pady=(12, 0))
+        tk.Checkbutton(
+            expect_frame, text="Esperar respuesta del endpoint",
+            variable=expect_var,
+            font=("Segoe UI", 9), bg=BG_DARKER, fg=TEXT_COLOR,
+            selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+            activeforeground=TEXT_COLOR,
+        ).pack(side="left")
+
+        # Qué hacer con la respuesta
+        add_nb_var = tk.BooleanVar(value=config["on_response"].get("add_to_notebooklm", False))
+        on_resp_frame = tk.Frame(dialog, bg=BG_DARKER)
+        on_resp_frame.pack(fill="x", padx=34, pady=(2, 0))
+        on_resp_cb = tk.Checkbutton(
+            on_resp_frame,
+            text="Agregar respuesta como fuente en NotebookLM",
+            variable=add_nb_var,
+            font=("Segoe UI", 8), bg=BG_DARKER, fg=SUBTEXT_COLOR,
+            selectcolor=SURFACE_COLOR, activebackground=BG_DARKER,
+            activeforeground=SUBTEXT_COLOR,
+        )
+        on_resp_cb.pack(side="left")
+
+        # Habilitar/deshabilitar opciones de respuesta según checkbox
+        def _toggle_resp_opts(*_):
+            state = "normal" if expect_var.get() else "disabled"
+            on_resp_cb.configure(state=state)
+
+        expect_var.trace_add("write", _toggle_resp_opts)
+        _toggle_resp_opts()
+
+        def _save():
+            # Validar headers JSON
+            headers_text = headers_box.get("1.0", "end").strip()
+            try:
+                headers_dict = _json.loads(headers_text) if headers_text else {}
+                if not isinstance(headers_dict, dict):
+                    raise ValueError
+            except (ValueError, _json.JSONDecodeError):
+                messagebox.showerror("Error", "Los headers deben ser un JSON válido ({}).",
+                                     parent=dialog)
+                return
+
+            # Validar timeout
+            try:
+                timeout_val = int(timeout_entry.get().strip())
+                if timeout_val <= 0:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Error", "El timeout debe ser un número positivo.",
+                                     parent=dialog)
+                return
+
+            new_config = {
+                "enabled": enabled_var.get(),
+                "endpoint": {
+                    "url": url_entry.get().strip(),
+                    "method": method_var.get(),
+                    "headers": headers_dict,
+                    "timeout": timeout_val,
+                },
+                "expect_response": expect_var.get(),
+                "on_response": {
+                    "add_to_notebooklm": add_nb_var.get(),
+                },
+            }
+            save_flow_config(new_config)
+            self._update_flow_indicator()
+            if new_config["enabled"] and new_config["endpoint"]["url"]:
+                self._log("Flow configurado y activado.", ACCENT_GREEN)
+            else:
+                self._log("Flow desactivado.", MUTED_COLOR)
+            dialog.destroy()
+
+        bf = tk.Frame(dialog, bg=BG_DARKER)
+        bf.pack(pady=(14, 20))
         tk.Button(
             bf, text="Guardar", font=("Segoe UI", 10),
             bg=ACCENT_GREEN, fg="#1e1e2e", relief="flat",
