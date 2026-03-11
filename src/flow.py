@@ -65,7 +65,13 @@ def execute_flow(extraction_result: str, fmt: str, log_fn, nb_id: str | None = N
         log_fn: Función para loguear en la GUI.
         nb_id: ID del notebook actual (para agregar fuentes).
     """
-    from .config import ACCENT_BLUE, ACCENT_GREEN, ACCENT_LAVENDER, ACCENT_RED, ACCENT_YELLOW
+    from .config import (
+        ACCENT_BLUE,
+        ACCENT_GREEN,
+        ACCENT_LAVENDER,
+        ACCENT_RED,
+        ACCENT_YELLOW,
+    )
 
     config = load_flow_config()
     if not config["enabled"]:
