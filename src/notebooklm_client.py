@@ -57,6 +57,7 @@ async def _subir_a_notebooklm(file_path: str, log_fn, progress_callback=None):
     async with await NotebookLMClient.from_storage(
         path=str(STORAGE_PATH),
     ) as client:
+        await client.refresh_auth()
         nb_id = await _get_or_create_notebook(client, log_fn)
 
         if progress_callback:
@@ -182,6 +183,7 @@ def listar_notebooks_con_fuentes():
         async with await NotebookLMClient.from_storage(
             path=str(STORAGE_PATH),
         ) as client:
+            await client.refresh_auth()
             notebooks = await client.notebooks.list()
             result = []
             for nb in notebooks:

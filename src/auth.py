@@ -20,6 +20,24 @@ from .config import (
 )
 
 
+def _storage_auth_ok() -> tuple[bool, str]:
+    """Validate that current storage can actually access NotebookLM."""
+
+    async def _check():
+        from notebooklm import NotebookLMClient
+
+        async with await NotebookLMClient.from_storage(path=str(STORAGE_PATH)) as client:
+            await client.refresh_auth()
+            notebooks = await client.notebooks.list()
+            return len(notebooks)
+
+    try:
+        count = asyncio.run(_check())
+        return True, f"Sesion validada. {count} notebooks accesibles."
+    except Exception as e:
+        return False, str(e)
+
+
 def _find_chrome() -> str | None:
     """Locate Chrome/Chromium binary."""
     if sys.platform == "win32":
@@ -50,6 +68,8 @@ def iniciar_login(log_fn, on_success, on_fail):
         return
 
     temp_profile = DATA_DIR / "temp_chrome_profile"
+    if temp_profile.exists():
+        shutil.rmtree(temp_profile, ignore_errors=True)
     temp_profile.mkdir(parents=True, exist_ok=True)
 
     log_fn("Abriendo Chrome para login...", ACCENT_YELLOW)
@@ -70,6 +90,7 @@ def iniciar_login(log_fn, on_success, on_fail):
         import time
 
         from playwright.sync_api import sync_playwright
+        already_warned_invalid = False
 
         for _ in range(60):
             time.sleep(5)
@@ -77,25 +98,36 @@ def iniciar_login(log_fn, on_success, on_fail):
                 with sync_playwright() as p:
                     browser = p.chromium.connect_over_cdp(f"http://localhost:{DEBUG_PORT}")
                     ctx = browser.contexts[0]
-                    cookies = ctx.cookies([
-                        "https://notebooklm.google.com",
-                        "https://google.com",
-                        "https://.google.com",
-                    ])
-                    if required.issubset({c["name"] for c in cookies}):
+                    cookies = ctx.cookies()
+                    cookie_names = {c["name"] for c in cookies}
+                    current_urls = [page.url for page in ctx.pages]
+                    reached_notebooklm = any(url.startswith("https://notebooklm.google.com") for url in current_urls)
+
+                    if required.issubset(cookie_names) and reached_notebooklm:
                         with open(STORAGE_PATH, "w") as f:
                             json.dump({"cookies": cookies, "origins": []}, f, indent=2)
-                        log_fn(f"Login exitoso! {len(cookies)} cookies.", ACCENT_GREEN)
-                        browser.close()
-                        proc.kill()
-                        on_success()
-                        return
+
+                        is_valid, detail = _storage_auth_ok()
+                        if is_valid:
+                            log_fn(f"Login exitoso! {len(cookies)} cookies.", ACCENT_GREEN)
+                            log_fn(detail, ACCENT_GREEN)
+                            browser.close()
+                            if proc.poll() is None:
+                                proc.terminate()
+                            on_success()
+                            return
+
+                        if not already_warned_invalid:
+                            log_fn("Login detectado, pero la sesion aun no es valida. Esperando...")
+                            already_warned_invalid = True
+
                     browser.close()
             except Exception:
                 pass
 
         log_fn("Timeout: login no completado.", ACCENT_RED)
-        proc.kill()
+        if proc.poll() is None:
+            proc.terminate()
         on_fail()
 
     threading.Thread(target=_poll, daemon=True).start()
@@ -108,6 +140,7 @@ def verificar_auth(log_fn, on_ok, on_fail):
         async with await NotebookLMClient.from_storage(
             path=str(STORAGE_PATH),
         ) as client:
+            await client.refresh_auth()
             return len(await client.notebooks.list())
 
     try:

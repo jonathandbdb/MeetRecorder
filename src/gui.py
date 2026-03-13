@@ -570,6 +570,7 @@ class App(tk.Tk):
             async def _create():
                 from notebooklm import NotebookLMClient
                 async with await NotebookLMClient.from_storage(path=str(STORAGE_PATH)) as client:
+                    await client.refresh_auth()
                     return await client.notebooks.create(name)
             nb = asyncio.run(_create())
             save_state({"notebook_id": nb.id, "title": name})
