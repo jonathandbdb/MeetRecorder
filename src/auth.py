@@ -61,6 +61,31 @@ def _find_chrome() -> str | None:
 
 def iniciar_login(log_fn, on_success, on_fail):
     """Open Chrome with remote debugging to capture Google cookies."""
+    login_cmds = []
+    cli_exe = shutil.which("notebooklm")
+    if cli_exe:
+        login_cmds.append([cli_exe, "--storage", str(STORAGE_PATH), "login"])
+
+    if not getattr(sys, "frozen", False):
+        login_cmds.append([sys.executable, "-m", "notebooklm", "--storage", str(STORAGE_PATH), "login"])
+
+    for cmd in login_cmds:
+        log_fn(f"Iniciando login oficial: {' '.join(cmd[:3])} ...", ACCENT_YELLOW)
+        try:
+            result = subprocess.run(cmd, check=False)
+            if result.returncode == 0:
+                is_valid, detail = _storage_auth_ok()
+                if is_valid:
+                    log_fn("Login exitoso por CLI.", ACCENT_GREEN)
+                    log_fn(detail, ACCENT_GREEN)
+                    on_success()
+                    return
+                log_fn(f"Login CLI completado pero no valido: {detail}", ACCENT_RED)
+            else:
+                log_fn("Login CLI fallo. Probando alternativa...", ACCENT_YELLOW)
+        except Exception as e:
+            log_fn(f"No se pudo ejecutar login oficial: {e}", ACCENT_YELLOW)
+
     chrome_exe = _find_chrome()
     if not chrome_exe:
         log_fn("No se encontró Chrome/Chromium.", ACCENT_RED)
@@ -92,38 +117,48 @@ def iniciar_login(log_fn, on_success, on_fail):
         from playwright.sync_api import sync_playwright
         already_warned_invalid = False
 
-        for _ in range(60):
-            time.sleep(5)
-            try:
-                with sync_playwright() as p:
-                    browser = p.chromium.connect_over_cdp(f"http://localhost:{DEBUG_PORT}")
-                    ctx = browser.contexts[0]
-                    cookies = ctx.cookies()
-                    cookie_names = {c["name"] for c in cookies}
-                    current_urls = [page.url for page in ctx.pages]
-                    reached_notebooklm = any(url.startswith("https://notebooklm.google.com") for url in current_urls)
+        browser = None
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.connect_over_cdp(f"http://localhost:{DEBUG_PORT}")
+                for _ in range(60):
+                    time.sleep(5)
+                    try:
+                        if not browser.contexts:
+                            continue
 
-                    if required.issubset(cookie_names) and reached_notebooklm:
-                        with open(STORAGE_PATH, "w") as f:
-                            json.dump({"cookies": cookies, "origins": []}, f, indent=2)
+                        ctx = browser.contexts[0]
+                        cookies = ctx.cookies()
+                        cookie_names = {c["name"] for c in cookies}
+                        current_urls = [page.url for page in ctx.pages]
+                        reached_notebooklm = any(url.startswith("https://notebooklm.google.com") for url in current_urls)
 
-                        is_valid, detail = _storage_auth_ok()
-                        if is_valid:
-                            log_fn(f"Login exitoso! {len(cookies)} cookies.", ACCENT_GREEN)
-                            log_fn(detail, ACCENT_GREEN)
-                            browser.close()
-                            if proc.poll() is None:
-                                proc.terminate()
-                            on_success()
-                            return
+                        if required.issubset(cookie_names) and reached_notebooklm:
+                            with open(STORAGE_PATH, "w") as f:
+                                json.dump({"cookies": cookies, "origins": []}, f, indent=2)
 
-                        if not already_warned_invalid:
-                            log_fn("Login detectado, pero la sesion aun no es valida. Esperando...")
-                            already_warned_invalid = True
+                            is_valid, detail = _storage_auth_ok()
+                            if is_valid:
+                                log_fn(f"Login exitoso! {len(cookies)} cookies.", ACCENT_GREEN)
+                                log_fn(detail, ACCENT_GREEN)
+                                if proc.poll() is None:
+                                    proc.terminate()
+                                on_success()
+                                return
 
+                            if not already_warned_invalid:
+                                log_fn("Login detectado, pero la sesion aun no es valida. Esperando...")
+                                already_warned_invalid = True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            if browser:
+                try:
                     browser.close()
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
         log_fn("Timeout: login no completado.", ACCENT_RED)
         if proc.poll() is None:
